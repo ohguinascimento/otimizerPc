@@ -7,6 +7,7 @@ Aplicativo desktop para diagnostico e otimizacao segura do Windows.
 - Mostra informacoes do sistema
 - Exibe uma analise detalhada com memoria RAM e tipo de disco
 - Mostra o modelo da placa-mae e uma analise de slots e upgrade de RAM
+- Faz auditoria de rede com processos, portas e conexoes ativas
 - Lista processos mais pesados
 - Limpa arquivos temporarios do usuario
 

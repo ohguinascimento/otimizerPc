@@ -95,6 +95,7 @@ function createWindow() {
 app.whenReady().then(() => {
   ipcMain.handle('system:snapshot', async () => runPython(['snapshot']));
   ipcMain.handle('system:processes', async (_event, limit = 8) => runPython(['processes', '--limit', String(limit)]));
+  ipcMain.handle('system:network', async (_event, limit = 40) => runPython(['network', '--limit', String(limit)]));
   ipcMain.handle('system:cleanup', async (_event, confirm = false) => {
     if (!confirm) {
       throw new Error('Confirmação necessária para limpar temporários.');

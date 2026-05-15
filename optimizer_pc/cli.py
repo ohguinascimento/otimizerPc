@@ -5,6 +5,7 @@ import json
 from dataclasses import asdict
 
 from .cleanup import clean_temp_files
+from .network_audit import collect_network_audit
 from .processes import list_top_processes
 from .system_info import get_system_snapshot
 
@@ -22,6 +23,9 @@ def main() -> None:
     processes_parser = subparsers.add_parser("processes", help="Retorna os processos mais pesados.")
     processes_parser.add_argument("--limit", type=int, default=8)
 
+    network_parser = subparsers.add_parser("network", help="Retorna a auditoria de rede.")
+    network_parser.add_argument("--limit", type=int, default=40)
+
     cleanup_parser = subparsers.add_parser("cleanup", help="Executa a limpeza dos temporários.")
     cleanup_parser.add_argument("--confirm", action="store_true")
 
@@ -33,6 +37,10 @@ def main() -> None:
 
     if args.command == "processes":
         _dump({"processes": [asdict(item) for item in list_top_processes(limit=args.limit)]})
+        return
+
+    if args.command == "network":
+        _dump(asdict(collect_network_audit(limit=args.limit)))
         return
 
     if args.command == "cleanup":
