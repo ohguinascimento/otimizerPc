@@ -1,0 +1,31 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "GUI: Desktop React",
+      "type": "process",
+      "command": "npm",
+      "args": ["run", "dev"],
+      "options": {
+        "cwd": "${workspaceFolder}\\web"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Testes: pytest",
+      "type": "process",
+      "command": "${config:python.defaultInterpreterPath}",
+      "args": ["-m", "pytest", "-q"],
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "App: executar",
+      "type": "process",
+      "command": "${config:python.defaultInterpreterPath}",
+      "args": ["main.py"],
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}
