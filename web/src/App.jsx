@@ -28,6 +28,18 @@ function formatAddress(host, port) {
   return `${host}:${port}`;
 }
 
+function truncateMiddle(value, limit = 60) {
+  if (!value || value.length <= limit) {
+    return value || 'n/d';
+  }
+  if (limit <= 3) {
+    return '...';
+  }
+  const head = Math.max(1, Math.floor((limit - 3) / 2));
+  const tail = Math.max(1, limit - 3 - head);
+  return `${value.slice(0, head)}...${value.slice(-tail)}`;
+}
+
 function getDesktopApi() {
   return window.otimizerPC || null;
 }
@@ -596,7 +608,9 @@ export default function App() {
 
               <article className="detail-card">
                 <span className="detail-label">Temp</span>
-                <strong className="detail-value">{snapshot?.temp_dir || 'n/d'}</strong>
+                <strong className="detail-value detail-value-ellipsis" title={snapshot?.temp_dir || 'n/d'}>
+                  {truncateMiddle(snapshot?.temp_dir, 64)}
+                </strong>
                 <span className="detail-meta">Pasta usada nas rotinas de limpeza segura.</span>
               </article>
 

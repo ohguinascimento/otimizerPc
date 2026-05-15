@@ -376,6 +376,12 @@ button {
   letter-spacing: -0.02em;
 }
 
+.detail-value-ellipsis {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .detail-meta {
   display: block;
   margin-top: 14px;

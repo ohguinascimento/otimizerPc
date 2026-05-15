@@ -15,6 +15,16 @@ def _format_optional_number(value: object, suffix: str = "") -> str:
     return f"{value}{suffix}"
 
 
+def _truncate_middle(value: str, limit: int = 60) -> str:
+    if len(value) <= limit:
+        return value
+    if limit <= 3:
+        return "..."
+    head = max(1, (limit - 3) // 2)
+    tail = max(1, limit - 3 - head)
+    return f"{value[:head]}...{value[-tail:]}"
+
+
 def format_snapshot() -> str:
     snapshot = get_system_snapshot()
     lines = [
@@ -22,7 +32,7 @@ def format_snapshot() -> str:
         f"Arquitetura: {snapshot.architecture}",
         f"CPU: {snapshot.cpu_cores_physical or 'n/d'} fisicos, {snapshot.cpu_cores_logical or 'n/d'} logicos",
         f"Disco do sistema: {_display_drive(snapshot.system_drive)}",
-        f"Temp: {snapshot.temp_dir}",
+        f"Temp: {_truncate_middle(snapshot.temp_dir)}",
     ]
     motherboard = getattr(snapshot, "motherboard", None)
     if motherboard is not None:
