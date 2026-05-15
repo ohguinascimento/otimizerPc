@@ -462,6 +462,38 @@ button {
   padding: 0 22px 18px;
 }
 
+.network-filters {
+  display: grid;
+  grid-template-columns: 2fr repeat(4, minmax(0, 1fr)) auto;
+  gap: 10px;
+  padding: 0 22px 12px;
+}
+
+.network-search,
+.network-select {
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.network-search::placeholder {
+  color: rgba(146, 164, 199, 0.8);
+}
+
+.network-reset {
+  white-space: nowrap;
+}
+
+.network-filter-summary {
+  padding: 0 22px 18px;
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.82rem;
+}
+
 .network-list {
   display: grid;
   gap: 12px;
@@ -654,5 +686,14 @@ button {
   .detail-grid,
   .process-list {
     padding: 18px;
+  }
+
+  .network-filters {
+    grid-template-columns: 1fr;
+    padding: 0 18px 12px;
+  }
+
+  .network-filter-summary {
+    padding: 0 18px 18px;
   }
 }

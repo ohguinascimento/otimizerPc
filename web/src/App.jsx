@@ -174,6 +174,11 @@ export default function App() {
   const [error, setError] = useState('');
   const [cleanupState, setCleanupState] = useState({ status: 'idle', message: '' });
   const [activeTab, setActiveTab] = useState('overview');
+  const [networkSearch, setNetworkSearch] = useState('');
+  const [networkRiskFilter, setNetworkRiskFilter] = useState('all');
+  const [networkStatusFilter, setNetworkStatusFilter] = useState('all');
+  const [networkProtocolFilter, setNetworkProtocolFilter] = useState('all');
+  const [networkScopeFilter, setNetworkScopeFilter] = useState('all');
 
   const apiAvailable = useMemo(() => Boolean(getDesktopApi()), []);
 
@@ -238,6 +243,59 @@ export default function App() {
   const memoryUpgrade = snapshot?.memory_upgrade || null;
   const maxProcessMemory = Math.max(...processes.map((item) => item.memory_mb), 1);
   const networkConnections = networkAudit?.connections || [];
+  const filteredNetworkConnections = useMemo(() => {
+    const query = networkSearch.trim().toLowerCase();
+
+    return networkConnections.filter((item) => {
+      if (networkRiskFilter !== 'all' && item.risk_level !== networkRiskFilter) {
+        return false;
+      }
+
+      if (networkStatusFilter !== 'all' && item.status !== networkStatusFilter) {
+        return false;
+      }
+
+      if (networkProtocolFilter !== 'all' && item.protocol !== networkProtocolFilter) {
+        return false;
+      }
+
+      if (networkScopeFilter === 'remote' && !item.remote_address) {
+        return false;
+      }
+
+      if (networkScopeFilter === 'listening' && item.status !== 'LISTEN') {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      const haystack = [
+        item.process_name,
+        item.exe_path,
+        item.username,
+        item.protocol,
+        item.status,
+        item.local_address,
+        item.remote_address,
+        String(item.pid ?? ''),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(query);
+    });
+  }, [networkConnections, networkSearch, networkRiskFilter, networkStatusFilter, networkProtocolFilter, networkScopeFilter]);
+
+  function resetNetworkFilters() {
+    setNetworkSearch('');
+    setNetworkRiskFilter('all');
+    setNetworkStatusFilter('all');
+    setNetworkProtocolFilter('all');
+    setNetworkScopeFilter('all');
+  }
 
   return (
     <main className="shell">
@@ -416,11 +474,55 @@ export default function App() {
               <MetricCard label="Escutando" value={networkAudit ? networkAudit.listening_connections : 'n/d'} hint="Portas abertas" tone="accent" />
               <MetricCard label="Suspeitas" value={networkAudit ? networkAudit.suspicious_connections : 'n/d'} hint="Marcadas pelas regras" tone={networkAudit?.suspicious_connections > 0 ? 'warning' : 'success'} />
             </div>
+            <div className="network-filters">
+              <input
+                className="network-search"
+                value={networkSearch}
+                onChange={(event) => setNetworkSearch(event.target.value)}
+                placeholder="Filtrar por processo, IP, PID, caminho..."
+              />
+
+              <select className="network-select" value={networkRiskFilter} onChange={(event) => setNetworkRiskFilter(event.target.value)}>
+                <option value="all">Todos os riscos</option>
+                <option value="alto">Alto risco</option>
+                <option value="medio">Médio risco</option>
+                <option value="baixo">Baixo risco</option>
+              </select>
+
+              <select className="network-select" value={networkStatusFilter} onChange={(event) => setNetworkStatusFilter(event.target.value)}>
+                <option value="all">Todos os status</option>
+                <option value="ESTABLISHED">ESTABLISHED</option>
+                <option value="LISTEN">LISTEN</option>
+                <option value="CLOSE_WAIT">CLOSE_WAIT</option>
+                <option value="TIME_WAIT">TIME_WAIT</option>
+                <option value="NONE">NONE</option>
+              </select>
+
+              <select className="network-select" value={networkProtocolFilter} onChange={(event) => setNetworkProtocolFilter(event.target.value)}>
+                <option value="all">Todos os protocolos</option>
+                <option value="tcp">TCP</option>
+                <option value="udp">UDP</option>
+                <option value="unknown">Unknown</option>
+              </select>
+
+              <select className="network-select" value={networkScopeFilter} onChange={(event) => setNetworkScopeFilter(event.target.value)}>
+                <option value="all">Escopo completo</option>
+                <option value="remote">Somente remoto</option>
+                <option value="listening">Somente escutando</option>
+              </select>
+
+              <button className="btn btn-ghost network-reset" type="button" onClick={resetNetworkFilters}>
+                Limpar filtros
+              </button>
+            </div>
+            <div className="network-filter-summary">
+              Exibindo {filteredNetworkConnections.length} de {networkConnections.length} conexões carregadas
+            </div>
             <div className="network-list">
-              {networkConnections.length > 0 ? (
-                networkConnections.map((item, index) => <NetworkRow key={`${item.pid || 'x'}-${item.process_name}-${index}`} item={item} />)
+              {filteredNetworkConnections.length > 0 ? (
+                filteredNetworkConnections.map((item, index) => <NetworkRow key={`${item.pid || 'x'}-${item.process_name}-${index}`} item={item} />)
               ) : (
-                <div className="empty-state">Nenhuma conexao disponivel no momento.</div>
+                <div className="empty-state">Nenhuma conexão encontrada com os filtros atuais.</div>
               )}
             </div>
           </Section>
