@@ -487,6 +487,22 @@ button {
   white-space: nowrap;
 }
 
+.toggle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.toggle-chip input {
+  accent-color: var(--accent);
+}
+
 .network-filter-summary {
   padding: 0 22px 18px;
   color: var(--muted);
@@ -503,6 +519,16 @@ button {
 .network-row {
   display: grid;
   grid-template-columns: 1.1fr 0.9fr;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.file-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
   gap: 16px;
   padding: 16px;
   border-radius: 18px;

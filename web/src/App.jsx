@@ -78,6 +78,33 @@ function riskTone(value) {
   return 'success';
 }
 
+function fileCategory(extension) {
+  const ext = (extension || '').toLowerCase();
+  if (['.exe', '.dll', '.sys', '.scr', '.com', '.msi', '.msp'].includes(ext)) {
+    return 'executavel';
+  }
+  if (['.ps1', '.bat', '.cmd', '.vbs', '.js', '.jse'].includes(ext)) {
+    return 'script';
+  }
+  if (['.lnk', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.rtf'].includes(ext)) {
+    return 'documento';
+  }
+  return 'outro';
+}
+
+function fileCategoryLabel(value) {
+  if (value === 'executavel') {
+    return 'Executavel';
+  }
+  if (value === 'script') {
+    return 'Script';
+  }
+  if (value === 'documento') {
+    return 'Documento';
+  }
+  return 'Outro';
+}
+
 function MetricCard({ label, value, hint, tone = 'neutral' }) {
   return (
     <article className={`metric-card metric-${tone}`}>
@@ -142,6 +169,38 @@ function NetworkRow({ item }) {
   );
 }
 
+function FileRow({ item }) {
+  const reasons = item.risk_reasons?.length ? item.risk_reasons.join(', ') : 'Sem alertas adicionais';
+  const category = fileCategory(item.extension);
+
+  return (
+    <div className="file-row">
+      <div className="file-main">
+        <div className="network-topline">
+          <strong>{item.name}</strong>
+          <span className={`risk-badge risk-${riskTone(item.risk_level)}`}>{riskLabel(item.risk_level)}</span>
+        </div>
+        <div className="network-meta">
+          <span>{fileCategoryLabel(category)}</span>
+          <span>{item.extension || 'sem extensao'}</span>
+          <span>{item.risk_score} pontos</span>
+        </div>
+        <div className="network-path">
+          <span>{item.path}</span>
+        </div>
+      </div>
+      <div className="network-side">
+        <span className="network-path-label">Modificado</span>
+        <strong>{item.modified_at || 'n/d'}</strong>
+        <span className="network-path-label">Criado</span>
+        <strong>{item.created_at || 'n/d'}</strong>
+        <span className="network-path-label">Motivos</span>
+        <p>{reasons}</p>
+      </div>
+    </div>
+  );
+}
+
 function Section({ title, subtitle, children, actions }) {
   return (
     <section className="panel">
@@ -169,6 +228,7 @@ export default function App() {
   const [snapshot, setSnapshot] = useState(null);
   const [processes, setProcesses] = useState([]);
   const [networkAudit, setNetworkAudit] = useState(null);
+  const [fileAudit, setFileAudit] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -179,6 +239,10 @@ export default function App() {
   const [networkStatusFilter, setNetworkStatusFilter] = useState('all');
   const [networkProtocolFilter, setNetworkProtocolFilter] = useState('all');
   const [networkScopeFilter, setNetworkScopeFilter] = useState('all');
+  const [fileSearch, setFileSearch] = useState('');
+  const [fileRiskFilter, setFileRiskFilter] = useState('all');
+  const [fileCategoryFilter, setFileCategoryFilter] = useState('all');
+  const [fileRecentOnly, setFileRecentOnly] = useState(true);
 
   const apiAvailable = useMemo(() => Boolean(getDesktopApi()), []);
 
@@ -196,10 +260,12 @@ export default function App() {
         api.getProcesses(8),
         api.getNetworkAudit(25),
       ]);
+      const fileData = await api.getFileAudit(40, 7);
 
       setSnapshot(snapshotData);
       setProcesses(processesData.processes || []);
       setNetworkAudit(networkData);
+      setFileAudit(fileData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro inesperado ao carregar os dados.');
     } finally {
@@ -243,6 +309,7 @@ export default function App() {
   const memoryUpgrade = snapshot?.memory_upgrade || null;
   const maxProcessMemory = Math.max(...processes.map((item) => item.memory_mb), 1);
   const networkConnections = networkAudit?.connections || [];
+  const fileEntries = fileAudit?.entries || [];
   const filteredNetworkConnections = useMemo(() => {
     const query = networkSearch.trim().toLowerCase();
 
@@ -289,12 +356,57 @@ export default function App() {
     });
   }, [networkConnections, networkSearch, networkRiskFilter, networkStatusFilter, networkProtocolFilter, networkScopeFilter]);
 
+  const filteredFileEntries = useMemo(() => {
+    const query = fileSearch.trim().toLowerCase();
+
+    return fileEntries.filter((item) => {
+      if (fileRiskFilter !== 'all' && item.risk_level !== fileRiskFilter) {
+        return false;
+      }
+
+      const category = fileCategory(item.extension);
+      if (fileCategoryFilter !== 'all' && category !== fileCategoryFilter) {
+        return false;
+      }
+
+      if (fileRecentOnly && item.risk_reasons && !item.risk_reasons.includes('modificado recentemente') && !item.risk_reasons.includes('modificado nas ultimas 24h')) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      const haystack = [
+        item.name,
+        item.path,
+        item.extension,
+        item.modified_at,
+        item.created_at,
+        item.accessed_at,
+        String(item.risk_score ?? ''),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(query);
+    });
+  }, [fileEntries, fileSearch, fileRiskFilter, fileCategoryFilter, fileRecentOnly]);
+
   function resetNetworkFilters() {
     setNetworkSearch('');
     setNetworkRiskFilter('all');
     setNetworkStatusFilter('all');
     setNetworkProtocolFilter('all');
     setNetworkScopeFilter('all');
+  }
+
+  function resetFileFilters() {
+    setFileSearch('');
+    setFileRiskFilter('all');
+    setFileCategoryFilter('all');
+    setFileRecentOnly(true);
   }
 
   return (
@@ -369,6 +481,9 @@ export default function App() {
         </TabButton>
         <TabButton active={activeTab === 'network'} onClick={() => setActiveTab('network')}>
           Auditoria de rede
+        </TabButton>
+        <TabButton active={activeTab === 'files'} onClick={() => setActiveTab('files')}>
+          Arquivos
         </TabButton>
         <TabButton active={activeTab === 'processes'} onClick={() => setActiveTab('processes')}>
           Processos
@@ -523,6 +638,70 @@ export default function App() {
                 filteredNetworkConnections.map((item, index) => <NetworkRow key={`${item.pid || 'x'}-${item.process_name}-${index}`} item={item} />)
               ) : (
                 <div className="empty-state">Nenhuma conexão encontrada com os filtros atuais.</div>
+              )}
+            </div>
+          </Section>
+        </section>
+      ) : null}
+
+      {activeTab === 'files' ? (
+        <section className="content-grid">
+          <Section
+            title="Analise de modificacoes"
+            subtitle="Arquivos alterados recentemente, com foco em executaveis e scripts suspeitos."
+            actions={<span className="mini-pill">{fileAudit?.backend || 'n/d'}</span>}
+          >
+            {fileAudit?.warning ? <div className="section-warning">{fileAudit.warning}</div> : null}
+            <div className="audit-grid">
+              <MetricCard label="Total" value={fileAudit ? fileAudit.total_files : 'n/d'} hint="Arquivos varridos" tone="neutral" />
+              <MetricCard label="Suspeitos" value={fileAudit ? fileAudit.suspicious_files : 'n/d'} hint="Marcados pela heuristica" tone={fileAudit?.suspicious_files > 0 ? 'warning' : 'success'} />
+              <MetricCard label="Janela" value={fileAudit ? `${fileAudit.recent_days} dias` : 'n/d'} hint="Filtro temporal base" tone="accent" />
+              <MetricCard label="Coleta" value={fileAudit ? fileAudit.backend : 'n/d'} hint="pytsk3 ou fallback local" tone="accent" />
+            </div>
+            <div className="network-filters">
+              <input
+                className="network-search"
+                value={fileSearch}
+                onChange={(event) => setFileSearch(event.target.value)}
+                placeholder="Filtrar por nome, caminho, extensao..."
+              />
+
+              <select className="network-select" value={fileRiskFilter} onChange={(event) => setFileRiskFilter(event.target.value)}>
+                <option value="all">Todos os riscos</option>
+                <option value="alto">Alto risco</option>
+                <option value="medio">Médio risco</option>
+                <option value="baixo">Baixo risco</option>
+              </select>
+
+              <select className="network-select" value={fileCategoryFilter} onChange={(event) => setFileCategoryFilter(event.target.value)}>
+                <option value="all">Todas as categorias</option>
+                <option value="executavel">Executavel</option>
+                <option value="script">Script</option>
+                <option value="documento">Documento</option>
+                <option value="outro">Outro</option>
+              </select>
+
+              <label className="toggle-chip">
+                <input
+                  type="checkbox"
+                  checked={fileRecentOnly}
+                  onChange={(event) => setFileRecentOnly(event.target.checked)}
+                />
+                <span>Somente recentes</span>
+              </label>
+
+              <button className="btn btn-ghost network-reset" type="button" onClick={resetFileFilters}>
+                Limpar filtros
+              </button>
+            </div>
+            <div className="network-filter-summary">
+              Exibindo {filteredFileEntries.length} de {fileEntries.length} arquivos marcados
+            </div>
+            <div className="network-list">
+              {filteredFileEntries.length > 0 ? (
+                filteredFileEntries.map((item, index) => <FileRow key={`${item.path}-${index}`} item={item} />)
+              ) : (
+                <div className="empty-state">Nenhum arquivo encontrado com os filtros atuais.</div>
               )}
             </div>
           </Section>

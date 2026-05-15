@@ -96,6 +96,15 @@ app.whenReady().then(() => {
   ipcMain.handle('system:snapshot', async () => runPython(['snapshot']));
   ipcMain.handle('system:processes', async (_event, limit = 8) => runPython(['processes', '--limit', String(limit)]));
   ipcMain.handle('system:network', async (_event, limit = 40) => runPython(['network', '--limit', String(limit)]));
+  ipcMain.handle('system:files', async (_event, options = {}) => {
+    const limit = String(options.limit ?? 40);
+    const recentDays = String(options.recentDays ?? 7);
+    const args = ['files', '--limit', limit, '--recent-days', recentDays];
+    if (options.source) {
+      args.push('--source', String(options.source));
+    }
+    return runPython(args);
+  });
   ipcMain.handle('system:cleanup', async (_event, confirm = false) => {
     if (!confirm) {
       throw new Error('Confirmação necessária para limpar temporários.');

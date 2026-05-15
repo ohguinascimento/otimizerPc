@@ -5,6 +5,7 @@ import json
 from dataclasses import asdict
 
 from .cleanup import clean_temp_files
+from .file_audit import collect_file_audit
 from .network_audit import collect_network_audit
 from .processes import list_top_processes
 from .system_info import get_system_snapshot
@@ -15,18 +16,23 @@ def _dump(payload: object) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Expõe dados do Otimizer PC em JSON para a GUI desktop.")
+    parser = argparse.ArgumentParser(description="Expose Otimizer PC data as JSON for the desktop GUI.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("snapshot", help="Retorna o snapshot completo do sistema.")
+    subparsers.add_parser("snapshot", help="Return the full system snapshot.")
 
-    processes_parser = subparsers.add_parser("processes", help="Retorna os processos mais pesados.")
+    processes_parser = subparsers.add_parser("processes", help="Return the heaviest processes.")
     processes_parser.add_argument("--limit", type=int, default=8)
 
-    network_parser = subparsers.add_parser("network", help="Retorna a auditoria de rede.")
+    network_parser = subparsers.add_parser("network", help="Return the network audit.")
     network_parser.add_argument("--limit", type=int, default=40)
 
-    cleanup_parser = subparsers.add_parser("cleanup", help="Executa a limpeza dos temporários.")
+    file_parser = subparsers.add_parser("files", help="Return the file modification audit.")
+    file_parser.add_argument("--limit", type=int, default=40)
+    file_parser.add_argument("--recent-days", type=int, default=7)
+    file_parser.add_argument("--source", default=None)
+
+    cleanup_parser = subparsers.add_parser("cleanup", help="Run the temp-file cleanup.")
     cleanup_parser.add_argument("--confirm", action="store_true")
 
     args = parser.parse_args()
@@ -41,6 +47,18 @@ def main() -> None:
 
     if args.command == "network":
         _dump(asdict(collect_network_audit(limit=args.limit)))
+        return
+
+    if args.command == "files":
+        _dump(
+            asdict(
+                collect_file_audit(
+                    limit=args.limit,
+                    recent_days=args.recent_days,
+                    source=args.source,
+                )
+            )
+        )
         return
 
     if args.command == "cleanup":

@@ -16,6 +16,7 @@ Aplicativo desktop para diagnostico e otimizacao segura do Windows.
 - Python 3.10+
 - `psutil`
 - Node.js 18+ para a interface React/Electron
+- `pytsk3` para a trilha forense de arquivos
 
 ## Instalacao
 
@@ -29,6 +30,14 @@ Para a interface desktop:
 cd web
 npm install
 ```
+
+Para habilitar a analise forense com `pytsk3`:
+
+```bash
+pip install -r requirements-forensic.txt
+```
+
+No Windows, a instalacao do `pytsk3` pode exigir Microsoft C++ Build Tools.
 
 ## Desenvolvimento e testes
 
