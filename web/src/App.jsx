@@ -231,6 +231,7 @@ export default function App() {
   const [fileAudit, setFileAudit] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [fileLoading, setFileLoading] = useState(false);
   const [error, setError] = useState('');
   const [cleanupState, setCleanupState] = useState({ status: 'idle', message: '' });
   const [activeTab, setActiveTab] = useState('overview');
@@ -246,7 +247,7 @@ export default function App() {
 
   const apiAvailable = useMemo(() => Boolean(getDesktopApi()), []);
 
-  async function loadData() {
+  async function loadCoreData() {
     setError('');
     setRefreshing(true);
     try {
@@ -260,12 +261,10 @@ export default function App() {
         api.getProcesses(8),
         api.getNetworkAudit(25),
       ]);
-      const fileData = await api.getFileAudit(40, 7);
 
       setSnapshot(snapshotData);
       setProcesses(processesData.processes || []);
       setNetworkAudit(networkData);
-      setFileAudit(fileData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro inesperado ao carregar os dados.');
     } finally {
@@ -274,9 +273,37 @@ export default function App() {
     }
   }
 
+  async function loadFileAudit() {
+    if (fileLoading || fileAudit) {
+      return;
+    }
+
+    setError('');
+    setFileLoading(true);
+    try {
+      const api = getDesktopApi();
+      if (!api) {
+        throw new Error('A API local do desktop nao esta disponivel.');
+      }
+
+      const fileData = await api.getFileAudit(40, 7);
+      setFileAudit(fileData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro inesperado ao carregar a auditoria de arquivos.');
+    } finally {
+      setFileLoading(false);
+    }
+  }
+
   useEffect(() => {
-    loadData();
+    loadCoreData();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'files' && !fileAudit && !fileLoading && apiAvailable) {
+      loadFileAudit();
+    }
+  }, [activeTab, fileAudit, fileLoading, apiAvailable]);
 
   async function handleCleanup() {
     if (!window.confirm('Confirma limpar os temporarios do usuario?')) {
@@ -296,7 +323,10 @@ export default function App() {
         status: 'success',
         message: `Limpeza concluida. ${data.result.deleted_files} arquivos e ${data.result.deleted_folders} pastas removidos.`,
       });
-      await loadData();
+      await loadCoreData();
+      if (activeTab === 'files') {
+        await loadFileAudit();
+      }
     } catch (err) {
       setCleanupState({
         status: 'error',
@@ -425,7 +455,16 @@ export default function App() {
         </div>
 
         <div className="hero-actions">
-          <button className="btn btn-ghost" onClick={loadData} disabled={refreshing}>
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              loadCoreData();
+              if (activeTab === 'files') {
+                loadFileAudit();
+              }
+            }}
+            disabled={refreshing || fileLoading}
+          >
             {refreshing ? 'Atualizando...' : 'Atualizar'}
           </button>
           <button className="btn btn-primary" onClick={handleCleanup} disabled={!snapshot}>
@@ -649,12 +688,22 @@ export default function App() {
           <Section
             title="Analise de modificacoes"
             subtitle="Arquivos alterados recentemente, com foco em executaveis e scripts suspeitos."
-            actions={<span className="mini-pill">{fileAudit?.backend || 'n/d'}</span>}
+            actions={<span className="mini-pill">{fileLoading ? 'Carregando...' : fileAudit?.backend || 'sob demanda'}</span>}
           >
+            {!fileAudit && !fileLoading ? (
+              <div className="section-warning">
+                A leitura de arquivos foi adiada para acelerar a abertura. Abra esta aba para carregar a analise.
+              </div>
+            ) : null}
             {fileAudit?.warning ? <div className="section-warning">{fileAudit.warning}</div> : null}
             <div className="audit-grid">
               <MetricCard label="Total" value={fileAudit ? fileAudit.total_files : 'n/d'} hint="Arquivos varridos" tone="neutral" />
-              <MetricCard label="Suspeitos" value={fileAudit ? fileAudit.suspicious_files : 'n/d'} hint="Marcados pela heuristica" tone={fileAudit?.suspicious_files > 0 ? 'warning' : 'success'} />
+              <MetricCard
+                label="Suspeitos"
+                value={fileAudit ? fileAudit.suspicious_files : 'n/d'}
+                hint="Marcados pela heuristica"
+                tone={fileAudit?.suspicious_files > 0 ? 'warning' : 'success'}
+              />
               <MetricCard label="Janela" value={fileAudit ? `${fileAudit.recent_days} dias` : 'n/d'} hint="Filtro temporal base" tone="accent" />
               <MetricCard label="Coleta" value={fileAudit ? fileAudit.backend : 'n/d'} hint="pytsk3 ou fallback local" tone="accent" />
             </div>

@@ -77,6 +77,88 @@ def test_get_system_snapshot_windows_reads_ram_and_storage(monkeypatch):
     assert snapshot.memory_upgrade.can_upgrade is True
 
 
+def test_get_system_snapshot_windows_uses_wmi_fallback_for_motherboard(monkeypatch):
+    monkeypatch.setattr(system_info.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(system_info.platform, "release", lambda: "11")
+    monkeypatch.setattr(system_info.platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(system_info.os, "cpu_count", lambda: 16)
+    monkeypatch.setattr(
+        system_info.os,
+        "getenv",
+        lambda key, default=None: {
+            "SystemDrive": "C:",
+            "TEMP": "C:\\Temp",
+            "TMP": "C:\\Temp",
+        }.get(key, default),
+    )
+    monkeypatch.setattr(system_info, "psutil", FakePsutil)
+
+    def fake_run(*args, **kwargs):
+        command = args[0][-1]
+        if "Get-CimInstance Win32_BaseBoard" in command:
+            raise system_info.subprocess.CalledProcessError(returncode=1, cmd=command)
+        if "Get-WmiObject Win32_BaseBoard" in command:
+            return SimpleNamespace(stdout="ASUSTeK COMPUTER INC.|TUF GAMING B550M-PLUS|ABC123\n")
+        if "Win32_PhysicalMemoryArray" in command:
+            return SimpleNamespace(stdout="4|2|2|16.0|64.0|True\n")
+        if "Get-Partition" in command:
+            return SimpleNamespace(stdout="SSD|Samsung SSD 970 EVO\n")
+        raise AssertionError(f"Unexpected command: {command}")
+
+    monkeypatch.setattr(system_info.subprocess, "run", fake_run)
+
+    snapshot = system_info.get_system_snapshot()
+
+    assert snapshot.motherboard is not None
+    assert snapshot.motherboard.manufacturer == "ASUSTeK COMPUTER INC."
+    assert snapshot.motherboard.model == "TUF GAMING B550M-PLUS"
+    assert snapshot.memory_upgrade is not None
+    assert snapshot.memory_upgrade.can_upgrade is True
+
+
+def test_get_system_snapshot_windows_uses_wmi_fallback_for_memory(monkeypatch):
+    monkeypatch.setattr(system_info.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(system_info.platform, "release", lambda: "11")
+    monkeypatch.setattr(system_info.platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(system_info.os, "cpu_count", lambda: 16)
+    monkeypatch.setattr(
+        system_info.os,
+        "getenv",
+        lambda key, default=None: {
+            "SystemDrive": "C:",
+            "TEMP": "C:\\Temp",
+            "TMP": "C:\\Temp",
+        }.get(key, default),
+    )
+    monkeypatch.setattr(system_info, "psutil", FakePsutil)
+
+    def fake_run(*args, **kwargs):
+        command = args[0][-1]
+        if "Get-Partition" in command:
+            return SimpleNamespace(stdout="SSD|Samsung SSD 970 EVO\n")
+        if "Get-CimInstance Win32_BaseBoard" in command:
+            return SimpleNamespace(stdout="ASUSTeK COMPUTER INC.|TUF GAMING B550M-PLUS|ABC123\n")
+        if "Get-CimInstance Win32_PhysicalMemoryArray" in command:
+            raise system_info.subprocess.CalledProcessError(returncode=1, cmd=command)
+        if "Get-CimInstance Win32_PhysicalMemory" in command:
+            raise system_info.subprocess.CalledProcessError(returncode=1, cmd=command)
+        if "Get-WmiObject Win32_PhysicalMemoryArray" in command:
+            return SimpleNamespace(stdout="4|2|2|16.0|64.0|True\n")
+        raise AssertionError(f"Unexpected command: {command}")
+
+    monkeypatch.setattr(system_info.subprocess, "run", fake_run)
+
+    snapshot = system_info.get_system_snapshot()
+
+    assert snapshot.memory_upgrade is not None
+    assert snapshot.memory_upgrade.total_slots == 4
+    assert snapshot.memory_upgrade.used_slots == 2
+    assert snapshot.memory_upgrade.free_slots == 2
+    assert snapshot.memory_upgrade.installed_gb == 16.0
+    assert snapshot.memory_upgrade.max_supported_gb == 64.0
+    assert snapshot.memory_upgrade.can_upgrade is True
+
+
 def test_get_system_snapshot_without_psutil_uses_fallback(monkeypatch):
     monkeypatch.setattr(system_info.platform, "system", lambda: "Linux")
     monkeypatch.setattr(system_info.platform, "release", lambda: "6.8")

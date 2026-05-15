@@ -140,6 +140,21 @@ def _run_powershell(command: str) -> str:
     return completed.stdout.strip()
 
 
+def _run_powershell_first_success(commands: list[str]) -> str:
+    last_error: Optional[Exception] = None
+    for command in commands:
+        try:
+            output = _run_powershell(command)
+        except (FileNotFoundError, subprocess.CalledProcessError, OSError) as exc:
+            last_error = exc
+            continue
+        if output:
+            return output
+    if last_error is not None:
+        raise last_error
+    return ""
+
+
 def _collect_memory_stats() -> tuple[Optional[float], Optional[float], Optional[float], Optional[float], Optional[int]]:
     if psutil is None:
         return None, None, None, None, None
@@ -194,54 +209,104 @@ def _parse_optional_float(value: str) -> Optional[float]:
 
 
 def _collect_motherboard_and_memory_windows() -> tuple[Optional[MotherboardInfo], Optional[MemoryUpgradeAnalysis]]:
-    baseboard_command = (
-        "$board = Get-CimInstance Win32_BaseBoard | Select-Object -First 1 Manufacturer,Product,SerialNumber; "
-        "if ($board) { "
-        "$manufacturer = if ($board.Manufacturer) { $board.Manufacturer } else { '' }; "
-        "$product = if ($board.Product) { $board.Product } else { '' }; "
-        "$serial = if ($board.SerialNumber) { $board.SerialNumber } else { '' }; "
-        "Write-Output ($manufacturer + '|' + $product + '|' + $serial); "
-        "}"
-    )
-    memory_command = (
-        "$arrays = @(Get-CimInstance Win32_PhysicalMemoryArray); "
-        "$modules = @(Get-CimInstance Win32_PhysicalMemory); "
-        "$totalSlots = ($arrays | Measure-Object -Property MemoryDevices -Sum).Sum; "
-        "if (-not $totalSlots) { $totalSlots = $null } "
-        "$usedSlots = @($modules).Count; "
-        "$installedBytes = ($modules | Measure-Object -Property Capacity -Sum).Sum; "
-        "if (-not $installedBytes) { $installedBytes = 0 } "
-        "$maxBytes = 0; "
-        "foreach ($array in $arrays) { "
-        "  if ($array.PSObject.Properties.Name -contains 'MaxCapacityEx' -and $array.MaxCapacityEx) { "
-        "    $maxBytes += [int64]$array.MaxCapacityEx; "
-        "  } elseif ($array.MaxCapacity) { "
-        "    $maxBytes += ([int64]$array.MaxCapacity * 1KB); "
-        "  } "
-        "} "
-        "if (-not $maxBytes) { $maxBytes = $null } "
-        "$installedGb = [math]::Round($installedBytes / 1GB, 2); "
-        "if (-not $installedBytes) { $installedGb = $null } "
-        "$maxGb = if ($maxBytes) { [math]::Round($maxBytes / 1GB, 2) } else { $null }; "
-        "$freeSlots = if ($null -ne $totalSlots) { [math]::Max($totalSlots - $usedSlots, 0) } else { $null }; "
-        "$canUpgrade = $null; "
-        "if ($null -ne $freeSlots -and $freeSlots -gt 0) { $canUpgrade = $true } "
-        "elseif ($null -ne $maxGb -and $null -ne $installedGb -and $installedGb -lt $maxGb) { $canUpgrade = $true } "
-        "elseif ($null -ne $freeSlots) { $canUpgrade = $false } "
-        "$totalSlotsText = if ($null -ne $totalSlots) { $totalSlots } else { '' }; "
-        "$usedSlotsText = if ($null -ne $usedSlots) { $usedSlots } else { '' }; "
-        "$freeSlotsText = if ($null -ne $freeSlots) { $freeSlots } else { '' }; "
-        "$installedGbText = if ($null -ne $installedGb) { $installedGb } else { '' }; "
-        "$maxGbText = if ($null -ne $maxGb) { $maxGb } else { '' }; "
-        "$canUpgradeText = if ($null -ne $canUpgrade) { $canUpgrade } else { '' }; "
-        "Write-Output ($totalSlotsText + '|' + $usedSlotsText + '|' + $freeSlotsText + '|' + $installedGbText + '|' + $maxGbText + '|' + $canUpgradeText);"
-    )
+    baseboard_commands = [
+        (
+            "$board = Get-CimInstance Win32_BaseBoard | Select-Object -First 1 Manufacturer,Product,SerialNumber; "
+            "if ($board) { "
+            "$manufacturer = if ($board.Manufacturer) { $board.Manufacturer } else { '' }; "
+            "$product = if ($board.Product) { $board.Product } else { '' }; "
+            "$serial = if ($board.SerialNumber) { $board.SerialNumber } else { '' }; "
+            "Write-Output ($manufacturer + '|' + $product + '|' + $serial); "
+            "}"
+        ),
+        (
+            "$board = Get-WmiObject Win32_BaseBoard | Select-Object -First 1 Manufacturer,Product,SerialNumber; "
+            "if ($board) { "
+            "$manufacturer = if ($board.Manufacturer) { $board.Manufacturer } else { '' }; "
+            "$product = if ($board.Product) { $board.Product } else { '' }; "
+            "$serial = if ($board.SerialNumber) { $board.SerialNumber } else { '' }; "
+            "Write-Output ($manufacturer + '|' + $product + '|' + $serial); "
+            "}"
+        ),
+    ]
+    memory_commands = [
+        (
+            "$arrays = @(Get-CimInstance Win32_PhysicalMemoryArray); "
+            "$modules = @(Get-CimInstance Win32_PhysicalMemory); "
+            "$totalSlots = ($arrays | Measure-Object -Property MemoryDevices -Sum).Sum; "
+            "if (-not $totalSlots) { $totalSlots = $null } "
+            "$usedSlots = @($modules).Count; "
+            "$installedBytes = ($modules | Measure-Object -Property Capacity -Sum).Sum; "
+            "if (-not $installedBytes) { $installedBytes = 0 } "
+            "$maxBytes = 0; "
+            "foreach ($array in $arrays) { "
+            "  if ($array.PSObject.Properties.Name -contains 'MaxCapacityEx' -and $array.MaxCapacityEx) { "
+            "    $maxBytes += [int64]$array.MaxCapacityEx; "
+            "  } elseif ($array.MaxCapacity) { "
+            "    $maxBytes += ([int64]$array.MaxCapacity * 1KB); "
+            "  } "
+            "} "
+            "if (-not $maxBytes) { $maxBytes = $null } "
+            "$installedGb = [math]::Round($installedBytes / 1GB, 2); "
+            "if (-not $installedBytes) { $installedGb = $null } "
+            "$maxGb = if ($maxBytes) { [math]::Round($maxBytes / 1GB, 2) } else { $null }; "
+            "$freeSlots = if ($null -ne $totalSlots) { [math]::Max($totalSlots - $usedSlots, 0) } else { $null }; "
+            "$canUpgrade = $null; "
+            "if ($null -ne $freeSlots -and $freeSlots -gt 0) { $canUpgrade = $true } "
+            "elseif ($null -ne $maxGb -and $null -ne $installedGb -and $installedGb -lt $maxGb) { $canUpgrade = $true } "
+            "elseif ($null -ne $freeSlots) { $canUpgrade = $false } "
+            "$totalSlotsText = if ($null -ne $totalSlots) { $totalSlots } else { '' }; "
+            "$usedSlotsText = if ($null -ne $usedSlots) { $usedSlots } else { '' }; "
+            "$freeSlotsText = if ($null -ne $freeSlots) { $freeSlots } else { '' }; "
+            "$installedGbText = if ($null -ne $installedGb) { $installedGb } else { '' }; "
+            "$maxGbText = if ($null -ne $maxGb) { $maxGb } else { '' }; "
+            "$canUpgradeText = if ($null -ne $canUpgrade) { $canUpgrade } else { '' }; "
+            "Write-Output ($totalSlotsText + '|' + $usedSlotsText + '|' + $freeSlotsText + '|' + $installedGbText + '|' + $maxGbText + '|' + $canUpgradeText);"
+        ),
+        (
+            "$arrays = @(Get-WmiObject Win32_PhysicalMemoryArray); "
+            "$modules = @(Get-WmiObject Win32_PhysicalMemory); "
+            "$totalSlots = ($arrays | Measure-Object -Property MemoryDevices -Sum).Sum; "
+            "if (-not $totalSlots) { $totalSlots = $null } "
+            "$usedSlots = @($modules).Count; "
+            "$installedBytes = ($modules | Measure-Object -Property Capacity -Sum).Sum; "
+            "if (-not $installedBytes) { $installedBytes = 0 } "
+            "$maxBytes = 0; "
+            "foreach ($array in $arrays) { "
+            "  if ($array.MaxCapacityEx) { "
+            "    $maxBytes += [int64]$array.MaxCapacityEx; "
+            "  } elseif ($array.MaxCapacity) { "
+            "    $maxBytes += ([int64]$array.MaxCapacity * 1KB); "
+            "  } "
+            "} "
+            "if (-not $maxBytes) { $maxBytes = $null } "
+            "$installedGb = [math]::Round($installedBytes / 1GB, 2); "
+            "if (-not $installedBytes) { $installedGb = $null } "
+            "$maxGb = if ($maxBytes) { [math]::Round($maxBytes / 1GB, 2) } else { $null }; "
+            "$freeSlots = if ($null -ne $totalSlots) { [math]::Max($totalSlots - $usedSlots, 0) } else { $null }; "
+            "$canUpgrade = $null; "
+            "if ($null -ne $freeSlots -and $freeSlots -gt 0) { $canUpgrade = $true } "
+            "elseif ($null -ne $maxGb -and $null -ne $installedGb -and $installedGb -lt $maxGb) { $canUpgrade = $true } "
+            "elseif ($null -ne $freeSlots) { $canUpgrade = $false } "
+            "$totalSlotsText = if ($null -ne $totalSlots) { $totalSlots } else { '' }; "
+            "$usedSlotsText = if ($null -ne $usedSlots) { $usedSlots } else { '' }; "
+            "$freeSlotsText = if ($null -ne $freeSlots) { $freeSlots } else { '' }; "
+            "$installedGbText = if ($null -ne $installedGb) { $installedGb } else { '' }; "
+            "$maxGbText = if ($null -ne $maxGb) { $maxGb } else { '' }; "
+            "$canUpgradeText = if ($null -ne $canUpgrade) { $canUpgrade } else { '' }; "
+            "Write-Output ($totalSlotsText + '|' + $usedSlotsText + '|' + $freeSlotsText + '|' + $installedGbText + '|' + $maxGbText + '|' + $canUpgradeText);"
+        ),
+    ]
 
     try:
-        baseboard_output = _run_powershell(baseboard_command)
-        memory_output = _run_powershell(memory_command)
+        baseboard_output = _run_powershell_first_success(baseboard_commands)
     except (FileNotFoundError, subprocess.CalledProcessError, OSError):
-        return None, None
+        baseboard_output = ""
+
+    try:
+        memory_output = _run_powershell_first_success(memory_commands)
+    except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+        memory_output = ""
 
     motherboard = None
     if baseboard_output:
@@ -272,6 +337,16 @@ def _collect_motherboard_and_memory_windows() -> tuple[Optional[MotherboardInfo]
             can_upgrade = True
         elif can_upgrade_raw in {"false", "0", "no"}:
             can_upgrade = False
+
+        if total_slots is not None and used_slots is not None and free_slots is None:
+            free_slots = max(total_slots - used_slots, 0)
+
+        if can_upgrade is None:
+            if free_slots is not None:
+                can_upgrade = free_slots > 0
+            elif max_supported_gb is not None and installed_gb is not None:
+                can_upgrade = installed_gb < max_supported_gb
+
         memory_upgrade = MemoryUpgradeAnalysis(
             installed_gb=installed_gb,
             total_slots=total_slots,
@@ -280,6 +355,29 @@ def _collect_motherboard_and_memory_windows() -> tuple[Optional[MotherboardInfo]
             max_supported_gb=max_supported_gb,
             can_upgrade=can_upgrade,
         )
+
+    if memory_upgrade is None and platform.system().lower() == "windows":
+        # Fallback minimal para quando o Windows expõe só a contagem de módulos.
+        try:
+            module_count = _run_powershell_first_success(
+                [
+                    "Write-Output ((@(Get-CimInstance Win32_PhysicalMemory)).Count)",
+                    "Write-Output ((@(Get-WmiObject Win32_PhysicalMemory)).Count)",
+                ]
+            )
+        except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+            module_count = ""
+
+        used_slots = _parse_optional_int(module_count.strip()) if module_count else None
+        if used_slots is not None:
+            memory_upgrade = MemoryUpgradeAnalysis(
+                installed_gb=None,
+                total_slots=None,
+                used_slots=used_slots,
+                free_slots=None,
+                max_supported_gb=None,
+                can_upgrade=None,
+            )
 
     return motherboard, memory_upgrade
 
