@@ -50,8 +50,20 @@ def test_get_system_snapshot_windows_reads_ram_and_storage(monkeypatch):
             return SimpleNamespace(stdout="SSD|Samsung SSD 970 EVO\n")
         if "Win32_BaseBoard" in command:
             return SimpleNamespace(stdout="ASUSTeK COMPUTER INC.|TUF GAMING B550M-PLUS|ABC123\n")
-        if "Win32_PhysicalMemoryArray" in command:
-            return SimpleNamespace(stdout="4|2|2|16.0|64.0|True\n")
+        if "Get-CimInstance Win32_PhysicalMemoryArray" in command and "MemoryDevices" in command:
+            return SimpleNamespace(stdout="4\n")
+        if "Get-WmiObject Win32_PhysicalMemoryArray" in command and "MemoryDevices" in command:
+            return SimpleNamespace(stdout="4\n")
+        if "MaxCapacityEx" in command or "MaxCapacity" in command:
+            return SimpleNamespace(stdout="64.0\n")
+        if "Get-CimInstance Win32_PhysicalMemory" in command and "Capacity" in command:
+            return SimpleNamespace(stdout="16.0\n")
+        if "Get-WmiObject Win32_PhysicalMemory" in command and "Capacity" in command:
+            return SimpleNamespace(stdout="16.0\n")
+        if "Get-CimInstance Win32_PhysicalMemory" in command and "Count" in command:
+            return SimpleNamespace(stdout="2\n")
+        if "Get-WmiObject Win32_PhysicalMemory" in command and "Count" in command:
+            return SimpleNamespace(stdout="2\n")
         raise AssertionError(f"Unexpected command: {command}")
 
     monkeypatch.setattr(system_info.subprocess, "run", fake_run)
@@ -99,8 +111,20 @@ def test_get_system_snapshot_windows_uses_wmi_fallback_for_motherboard(monkeypat
             raise system_info.subprocess.CalledProcessError(returncode=1, cmd=command)
         if "Get-WmiObject Win32_BaseBoard" in command:
             return SimpleNamespace(stdout="ASUSTeK COMPUTER INC.|TUF GAMING B550M-PLUS|ABC123\n")
-        if "Win32_PhysicalMemoryArray" in command:
-            return SimpleNamespace(stdout="4|2|2|16.0|64.0|True\n")
+        if "Get-CimInstance Win32_PhysicalMemoryArray" in command and "MemoryDevices" in command:
+            return SimpleNamespace(stdout="4\n")
+        if "Get-WmiObject Win32_PhysicalMemoryArray" in command and "MemoryDevices" in command:
+            return SimpleNamespace(stdout="4\n")
+        if "MaxCapacityEx" in command or "MaxCapacity" in command:
+            return SimpleNamespace(stdout="64.0\n")
+        if "Get-CimInstance Win32_PhysicalMemory" in command and "Capacity" in command:
+            return SimpleNamespace(stdout="16.0\n")
+        if "Get-WmiObject Win32_PhysicalMemory" in command and "Capacity" in command:
+            return SimpleNamespace(stdout="16.0\n")
+        if "Get-CimInstance Win32_PhysicalMemory" in command and "Count" in command:
+            return SimpleNamespace(stdout="2\n")
+        if "Get-WmiObject Win32_PhysicalMemory" in command and "Count" in command:
+            return SimpleNamespace(stdout="2\n")
         if "Get-Partition" in command:
             return SimpleNamespace(stdout="SSD|Samsung SSD 970 EVO\n")
         raise AssertionError(f"Unexpected command: {command}")
@@ -138,12 +162,20 @@ def test_get_system_snapshot_windows_uses_wmi_fallback_for_memory(monkeypatch):
             return SimpleNamespace(stdout="SSD|Samsung SSD 970 EVO\n")
         if "Get-CimInstance Win32_BaseBoard" in command:
             return SimpleNamespace(stdout="ASUSTeK COMPUTER INC.|TUF GAMING B550M-PLUS|ABC123\n")
-        if "Get-CimInstance Win32_PhysicalMemoryArray" in command:
+        if "Get-CimInstance Win32_PhysicalMemoryArray" in command and "MemoryDevices" in command:
             raise system_info.subprocess.CalledProcessError(returncode=1, cmd=command)
-        if "Get-CimInstance Win32_PhysicalMemory" in command:
+        if "Get-WmiObject Win32_PhysicalMemoryArray" in command and "MemoryDevices" in command:
+            return SimpleNamespace(stdout="4\n")
+        if "Get-CimInstance Win32_PhysicalMemory" in command and "Count" in command:
             raise system_info.subprocess.CalledProcessError(returncode=1, cmd=command)
-        if "Get-WmiObject Win32_PhysicalMemoryArray" in command:
-            return SimpleNamespace(stdout="4|2|2|16.0|64.0|True\n")
+        if "Get-WmiObject Win32_PhysicalMemory" in command and "Count" in command:
+            return SimpleNamespace(stdout="2\n")
+        if "MaxCapacityEx" in command or "MaxCapacity" in command:
+            return SimpleNamespace(stdout="64.0\n")
+        if "Get-CimInstance Win32_PhysicalMemory" in command and "Capacity" in command:
+            raise system_info.subprocess.CalledProcessError(returncode=1, cmd=command)
+        if "Get-WmiObject Win32_PhysicalMemory" in command and "Capacity" in command:
+            return SimpleNamespace(stdout="16.0\n")
         raise AssertionError(f"Unexpected command: {command}")
 
     monkeypatch.setattr(system_info.subprocess, "run", fake_run)
