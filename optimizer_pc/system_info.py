@@ -342,7 +342,7 @@ def _collect_motherboard_and_memory_windows() -> tuple[Optional[MotherboardInfo]
                             "  $max = 0; "
                             "  foreach ($array in $arrays) { "
                             "    if ($array.PSObject.Properties.Name -contains 'MaxCapacityEx' -and $array.MaxCapacityEx) { "
-                            "      $max += [int64]$array.MaxCapacityEx; "
+                            "      $max += ([int64]$array.MaxCapacityEx * 1KB); "
                             "    } elseif ($array.MaxCapacity) { "
                             "      $max += ([int64]$array.MaxCapacity * 1KB); "
                             "    } "
@@ -356,7 +356,7 @@ def _collect_motherboard_and_memory_windows() -> tuple[Optional[MotherboardInfo]
                             "  $max = 0; "
                             "  foreach ($array in $arrays) { "
                             "    if ($array.MaxCapacityEx) { "
-                            "      $max += [int64]$array.MaxCapacityEx; "
+                            "      $max += ([int64]$array.MaxCapacityEx * 1KB); "
                             "    } elseif ($array.MaxCapacity) { "
                             "      $max += ([int64]$array.MaxCapacity * 1KB); "
                             "    } "
@@ -408,6 +408,18 @@ def get_system_snapshot() -> SystemSnapshot:
     if platform.system().lower() == "windows":
         storage_type, storage_model = _detect_storage_type_windows(system_drive)
         motherboard, memory_upgrade = _collect_motherboard_and_memory_windows()
+        if cpu_physical is None:
+            try:
+                cpu_physical = _parse_ps_output_int(
+                    _run_powershell_first_success(
+                        [
+                            "(Get-CimInstance Win32_Processor | Measure-Object -Property NumberOfCores -Sum).Sum",
+                            "(Get-WmiObject Win32_Processor | Measure-Object -Property NumberOfCores -Sum).Sum",
+                        ]
+                    )
+                )
+            except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+                pass
 
     return SystemSnapshot(
         os_name=platform.system(),
