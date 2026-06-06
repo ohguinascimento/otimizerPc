@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .cleanup import clean_temp_files
+from .power import collect_power_snapshot
 from .processes import list_top_processes
 from .system_info import get_system_snapshot
 
@@ -103,13 +104,37 @@ def run_cleanup(confirm: bool = True) -> str:
     )
 
 
+def format_power() -> str:
+    snapshot = collect_power_snapshot()
+    lines = [
+        "Consumo da fonte:",
+        f"Status: {snapshot.status}",
+        f"Consumo atual: {snapshot.watts if snapshot.watts is not None else 'n/d'} W",
+        f"Fonte da leitura: {snapshot.source}",
+    ]
+    if snapshot.confidence is not None:
+        lines.append(f"Confianca: {snapshot.confidence * 100:.0f}%")
+    if snapshot.cpu_percent is not None:
+        lines.append(f"CPU media: {snapshot.cpu_percent}%")
+    if snapshot.memory_percent is not None:
+        lines.append(f"RAM: {snapshot.memory_percent}%")
+    if snapshot.battery_percent is not None:
+        lines.append(f"Bateria: {snapshot.battery_percent}%")
+    if snapshot.battery_runtime_minutes is not None:
+        lines.append(f"Autonomia estimada: {snapshot.battery_runtime_minutes} min")
+    if snapshot.note:
+        lines.append(snapshot.note)
+    return "\n".join(lines)
+
+
 def menu() -> str:
     return (
         "Otimizer PC\n"
         "1. Ver analise detalhada do sistema\n"
         "2. Ver processos pesados\n"
         "3. Limpar arquivos temporarios\n"
-        "4. Sair\n"
+        "4. Ver consumo da fonte\n"
+        "5. Sair\n"
     )
 
 
@@ -117,7 +142,8 @@ def handle_choice(choice: str) -> str:
     actions = {
         "1": format_snapshot,
         "2": format_processes,
-        "4": lambda: "Encerrando.",
+        "4": format_power,
+        "5": lambda: "Encerrando.",
     }
     action = actions.get(choice.strip())
     if action is None:

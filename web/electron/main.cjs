@@ -105,6 +105,7 @@ app.whenReady().then(() => {
     }
     return runPython(args);
   });
+  ipcMain.handle('system:power', async () => runPython(['power']));
   ipcMain.handle('system:cleanup', async (_event, confirm = false) => {
     if (!confirm) {
       throw new Error('Confirmação necessária para limpar temporários.');

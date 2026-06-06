@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 const numberFormatter = new Intl.NumberFormat('pt-BR', {
   maximumFractionDigits: 1,
@@ -236,11 +236,63 @@ function TabButton({ active, onClick, children }) {
   );
 }
 
+function PowerChart({ points }) {
+  const width = 920;
+  const height = 260;
+  const padX = 20;
+  const padY = 20;
+
+  if (!points.length) {
+    return <div className="empty-state">Nenhuma leitura de watts ainda.</div>;
+  }
+
+  const values = points.map((point) => point.watts);
+  const maxValue = Math.max(...values, 1);
+  const minValue = Math.min(...values, 0);
+  const range = Math.max(maxValue - minValue, 1);
+  const lastIndex = Math.max(points.length - 1, 1);
+
+  const buildPoint = (value, index) => {
+    const x = padX + ((width - padX * 2) * index) / lastIndex;
+    const normalized = maxValue === minValue ? 0.5 : (value - minValue) / range;
+    const y = height - padY - normalized * (height - padY * 2);
+    return `${x},${y}`;
+  };
+
+  const linePoints = points.map((point, index) => buildPoint(point.watts, index)).join(' ');
+  const areaPoints = [
+    `0,${height}`,
+    `${buildPoint(values[0], 0)}`,
+    linePoints,
+    `${width},${height}`,
+  ].join(' ');
+
+  return (
+    <div className="power-chart-wrap">
+      <svg className="power-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Grafico de consumo em watts">
+        <defs>
+          <linearGradient id="powerFill" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#5fe0d0" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#5fe0d0" stopOpacity="0.03" />
+          </linearGradient>
+        </defs>
+        <polygon className="power-area" points={areaPoints} />
+        <polyline className="power-line" points={linePoints} />
+        {points.map((point, index) => {
+          const [x, y] = buildPoint(point.watts, index).split(',');
+          return <circle key={`${point.measured_at}-${index}`} cx={x} cy={y} r="4.5" className="power-dot" />;
+        })}
+      </svg>
+    </div>
+  );
+}
+
 export default function App() {
   const [snapshot, setSnapshot] = useState(null);
   const [processes, setProcesses] = useState([]);
   const [networkAudit, setNetworkAudit] = useState(null);
   const [fileAudit, setFileAudit] = useState(null);
+  const [powerTelemetry, setPowerTelemetry] = useState({ current: null, history: [] });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [fileLoading, setFileLoading] = useState(false);
@@ -256,6 +308,7 @@ export default function App() {
   const [fileRiskFilter, setFileRiskFilter] = useState('all');
   const [fileCategoryFilter, setFileCategoryFilter] = useState('all');
   const [fileRecentOnly, setFileRecentOnly] = useState(true);
+  const powerRequestInFlight = useRef(false);
 
   const apiAvailable = useMemo(() => Boolean(getDesktopApi()), []);
 
@@ -268,15 +321,35 @@ export default function App() {
         throw new Error('A API local do desktop nao esta disponivel.');
       }
 
-      const [snapshotData, processesData, networkData] = await Promise.all([
+      const [snapshotData, processesData, networkData, powerData] = await Promise.all([
         api.getSnapshot(),
         api.getProcesses(8),
         api.getNetworkAudit(25),
+        api.getPowerSnapshot(),
       ]);
 
       setSnapshot(snapshotData);
       setProcesses(processesData.processes || []);
       setNetworkAudit(networkData);
+      setPowerTelemetry((previous) => {
+        if (powerData?.watts == null) {
+          return {
+            current: powerData,
+            history: previous.history,
+          };
+        }
+
+        const nextPoint = {
+          measured_at: powerData?.measured_at || new Date().toISOString(),
+          watts: Number.isFinite(powerData?.watts) ? powerData.watts : 0,
+          source: powerData?.source,
+        };
+        const history = [...previous.history, nextPoint].slice(-24);
+        return {
+          current: powerData,
+          history,
+        };
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro inesperado ao carregar os dados.');
     } finally {
@@ -307,9 +380,61 @@ export default function App() {
     }
   }
 
+  async function loadPowerData() {
+    if (powerRequestInFlight.current) {
+      return;
+    }
+
+    powerRequestInFlight.current = true;
+    try {
+      const api = getDesktopApi();
+      if (!api) {
+        throw new Error('A API local do desktop nao esta disponivel.');
+      }
+
+      const data = await api.getPowerSnapshot();
+      setPowerTelemetry((previous) => {
+        if (data?.watts == null) {
+          return {
+            current: data,
+            history: previous.history,
+          };
+        }
+
+        const nextPoint = {
+          measured_at: data.measured_at,
+          watts: Number.isFinite(data.watts) ? data.watts : 0,
+          source: data.source,
+        };
+        const history = [...previous.history, nextPoint].slice(-24);
+        return {
+          current: data,
+          history,
+        };
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro inesperado ao ler o consumo da fonte.');
+    } finally {
+      powerRequestInFlight.current = false;
+    }
+  }
+
   useEffect(() => {
     loadCoreData();
   }, []);
+
+  useEffect(() => {
+    if (!apiAvailable) {
+      return undefined;
+    }
+
+    loadPowerData();
+    const timer = window.setInterval(() => {
+      loadPowerData();
+    }, 4000);
+
+    return () => window.clearInterval(timer);
+  }, [apiAvailable]);
 
   useEffect(() => {
     if (activeTab === 'files' && !fileAudit && !fileLoading && apiAvailable) {
@@ -336,6 +461,7 @@ export default function App() {
         message: `Limpeza concluida. ${data.result.deleted_files} arquivos e ${data.result.deleted_folders} pastas removidos.`,
       });
       await loadCoreData();
+      await loadPowerData();
       if (activeTab === 'files') {
         await loadFileAudit();
       }
@@ -352,6 +478,8 @@ export default function App() {
   const maxProcessMemory = Math.max(...processes.map((item) => item.memory_mb), 1);
   const networkConnections = networkAudit?.connections || [];
   const fileEntries = fileAudit?.entries || [];
+  const powerSample = powerTelemetry.current;
+  const powerHistory = powerTelemetry.history;
   const filteredNetworkConnections = useMemo(() => {
     const query = networkSearch.trim().toLowerCase();
 
@@ -471,6 +599,7 @@ export default function App() {
             className="btn btn-ghost"
             onClick={() => {
               loadCoreData();
+              loadPowerData();
               if (activeTab === 'files') {
                 loadFileAudit();
               }
@@ -545,6 +674,45 @@ export default function App() {
       </section>
 
       {activeTab === 'overview' ? (
+        <>
+          <Section
+            title="Consumo da fonte"
+            subtitle="Leitura ao vivo em watts com historico curto para acompanhar a variacao."
+            actions={
+              <span className="mini-pill">
+                {powerSample?.source || 'aguardando leitura'}
+              </span>
+            }
+          >
+            <div className="power-panel">
+              <div className="power-summary">
+                <MetricCard
+                  label="Watts"
+                  value={powerSample?.watts != null ? `${formatNumber(powerSample.watts)} W` : 'n/d'}
+                  hint={powerSample?.status === 'ok' ? 'Leitura atual da fonte' : 'Sem leitura valida'}
+                  tone="accent"
+                />
+                <MetricCard
+                  label="Confianca"
+                  value={powerSample?.confidence != null ? `${formatNumber(powerSample.confidence * 100)}%` : 'n/d'}
+                  hint={powerSample?.note || 'Fonte e metodo de leitura'}
+                  tone={powerSample?.confidence != null && powerSample.confidence > 0.7 ? 'success' : 'warning'}
+                />
+                <MetricCard
+                  label="Historico"
+                  value={`${powerHistory.length} amostras`}
+                  hint={powerSample?.measured_at ? `Ultima leitura: ${powerSample.measured_at}` : 'Atualiza a cada 4 segundos'}
+                  tone="neutral"
+                />
+              </div>
+              <PowerChart points={powerHistory} />
+              <div className="power-footnote">
+                <span>{powerSample?.battery_percent != null ? `Bateria: ${formatNumber(powerSample.battery_percent)}%` : 'Sem bateria ou leitura por modelo do sistema.'}</span>
+                <span>{powerSample?.battery_runtime_minutes != null ? `Autonomia estimada: ${powerSample.battery_runtime_minutes} min` : 'O valor exato depende de sensor de hardware ou bateria'}</span>
+              </div>
+            </div>
+          </Section>
+
         <section className="content-grid">
           <Section
             title="Resumo do hardware"
@@ -626,6 +794,7 @@ export default function App() {
             </div>
           </Section>
         </section>
+        </>
       ) : null}
 
       {activeTab === 'network' ? (

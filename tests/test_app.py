@@ -90,11 +90,40 @@ def test_run_cleanup_formats_result(monkeypatch):
     assert "Itens ignorados: 1" in output
 
 
+def test_format_power_reports_power_snapshot(monkeypatch):
+    monkeypatch.setattr(
+        app,
+        "collect_power_snapshot",
+        lambda: SimpleNamespace(
+            status="ok",
+            watts=23.4,
+            source="system_load_model",
+            confidence=0.35,
+            cpu_percent=18.2,
+            memory_percent=41.0,
+            battery_percent=None,
+            battery_runtime_minutes=None,
+            note="Leitura de teste.",
+        ),
+    )
+
+    output = app.format_power()
+
+    assert "Consumo da fonte:" in output
+    assert "Consumo atual: 23.4 W" in output
+    assert "Fonte da leitura: system_load_model" in output
+    assert "Confianca: 35%" in output
+    assert "CPU media: 18.2%" in output
+    assert "RAM: 41.0%" in output
+    assert "Leitura de teste." in output
+
+
 def test_menu_includes_detailed_analysis_option():
     output = app.menu()
 
     assert "1. Ver analise detalhada do sistema" in output
-    assert "4. Sair" in output
+    assert "4. Ver consumo da fonte" in output
+    assert "5. Sair" in output
 
 
 def test_handle_choice_rejects_invalid_option():

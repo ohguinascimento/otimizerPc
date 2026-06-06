@@ -7,6 +7,7 @@ from dataclasses import asdict
 from .cleanup import clean_temp_files
 from .file_audit import collect_file_audit
 from .network_audit import collect_network_audit
+from .power import collect_power_snapshot
 from .processes import list_top_processes
 from .system_info import get_system_snapshot
 
@@ -31,6 +32,8 @@ def main() -> None:
     file_parser.add_argument("--limit", type=int, default=40)
     file_parser.add_argument("--recent-days", type=int, default=7)
     file_parser.add_argument("--source", default=None)
+
+    subparsers.add_parser("power", help="Return the power snapshot.")
 
     cleanup_parser = subparsers.add_parser("cleanup", help="Run the temp-file cleanup.")
     cleanup_parser.add_argument("--confirm", action="store_true")
@@ -59,6 +62,10 @@ def main() -> None:
                 )
             )
         )
+        return
+
+    if args.command == "power":
+        _dump(asdict(collect_power_snapshot()))
         return
 
     if args.command == "cleanup":
